@@ -15,8 +15,35 @@ namespace Kama_memoryPool
 #define MAX_SLOT_SIZE 512       //最大槽512字节
 struct Slot
 {
-    std::atomic<Slot*>next; //原子指针 串联空闲Slot ，避免竞态 比mutex减少上下文切换开销
+    std::atomic<Slot*> next; //原子指针 串联空闲Slot ，避免竞态 比mutex减少上下文切换开销
 };
 
+class MemoryPool
+{
+
+public:
+    MemoryPool(size_t BlockSize = 4096);
+    ~MemoryPool();
+
+    void init(size_t);
+
+    void* allocate();
+    void deallocate(void*);
+
+private:
+    void allocateNewBlock();
+    size_t padPointer(char* p, size_t align);
+
+    bool pushFreeList(Slot* slot);
+    Slot* popFreeList();
+private:
+    int BlockSize_;
+    int SlotSize_;
+    Slot* firstBlock_;
+    Slot* curSlot_;
+    std::atomic<Slot*> freeList_;
+    Slot* lastSlot_;
+    std::mutex mutexForBlock_;
+};
 
 }
