@@ -3,7 +3,12 @@
 namespace Kama_memoryPool
 {
     MemoryPool::MemoryPool(size_t BlockSize)
-
+    : BlockSize_(BlockSize)
+    , SlotSize_(0)
+    , firstBlock_(nullptr)
+    , curSlot_(nullptr)
+    , freeList_(nullptr)
+    , lastSlot_(nullptr)
     {
 
     }
