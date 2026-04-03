@@ -46,4 +46,19 @@ private:
     std::mutex mutexForBlock_;
 };
 
+class HashBucket
+{
+public:
+    // 初始化 64 个内存池
+    void initMemoryPool();
+
+    // 申请、释放内存
+    void* useMemory(size_t size);
+    void  freeMemory(void* ptr, size_t size);
+
+private:
+    // 获取第 index 个内存池
+    MemoryPool& getMemoryPool(int index);
+};
+
 }
