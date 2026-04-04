@@ -106,12 +106,12 @@ namespace Kama_memoryPool
         reinterpret_cast<Slot*>(newBlock)->next.store(firstBlock_);
         firstBlock_=reinterpret_cast<Slot*>(newBlock);  
         //因为是开新块 所以需要内存对齐 
-        char *body=reinterpret_cast<char*>(newBlock)+sizeof(Slot);
+        char *body=reinterpret_cast<char*>(newBlock)+sizeof(Slot*);
 
         size_t padding = padPointer(body,SlotSize_);
         curSlot_=reinterpret_cast<Slot*>(body+padding);
 
-        lastSlot_=reinterpret_cast<Slot*>(reinterpret_cast<char*>(newBlock)+BlockSize_-SlotSize_+1);
+        lastSlot_=reinterpret_cast<Slot*>(reinterpret_cast<size_t>(newBlock)+BlockSize_-SlotSize_+1);
     }
 
     size_t MemoryPool::padPointer(char* p,size_t align)

@@ -61,4 +61,27 @@ private:
     MemoryPool& getMemoryPool(int index);
 };
 
+template <typename T,typename... Args>
+T* newElement(Args&&... args)
+{
+    T* p=nullptr;
+    if((p=reinterpret_cast<T*>(HashBucket::useMemory(sizeof(T))))!=nullptr)
+    {
+        new(p)T(std::forward<Args>(args)...);
+    }
+    return p;
+}
+
+
+template <typename T>
+void deleteElement(T* p)
+{
+    if(p)
+    {
+        p->~T();
+        HashBucket::freeMemory(reinterpret_cast<void*>(p),sizeof(T));
+    }
+}
+
+
 }
