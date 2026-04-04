@@ -46,19 +46,20 @@ private:
     std::mutex mutexForBlock_;
 };
 
+// 测试HashBucket::initMemoryPool(); 解决 +static
 class HashBucket
 {
 public:
     // 初始化 64 个内存池
-    void initMemoryPool();
+    static void initMemoryPool();
 
     // 申请、释放内存
-    void* useMemory(size_t size);
-    void  freeMemory(void* ptr, size_t size);
+    static void* useMemory(size_t size);
+    static void  freeMemory(void* ptr, size_t size);
 
 private:
     // 获取第 index 个内存池
-    MemoryPool& getMemoryPool(int index);
+    static MemoryPool& getMemoryPool(int index);
 };
 
 template <typename T,typename... Args>
