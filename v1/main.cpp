@@ -134,5 +134,16 @@ int main()
     std::cout << "===== 测试：new/delete =====" << std::endl;
     BenchmarkNew(100, 1, 10);
 
+
+/*
+    === 内存池初始化成功 ===
+
+    ===== 测试：内存池 =====
+    1个线程并发执行10轮次，每轮次newElement&deleteElement 100次，总计花费：144 ms
+
+    ===== 测试：new/delete =====
+    1个线程并发执行10轮次，每轮次new/delete 100次，总计花费：66 ms
+*/
+
     return 0;
 }

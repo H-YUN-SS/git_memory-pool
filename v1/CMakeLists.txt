@@ -12,3 +12,4 @@ add_executable(mempool_test src/MemoryPool.cpp main.cpp)
 # cmake ..
 # make
 # ./mempool_test
+
