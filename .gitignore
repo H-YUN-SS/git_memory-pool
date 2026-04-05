@@ -1,0 +1,19 @@
+# 忽略编译文件夹
+build/
+build
+*/build/
+
+# 忽略可执行文件
+mempool_test
+test_pool
+
+# 忽略 CMake 生成文件
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# 忽略临时文件
+*.o
+*.out
+*.log
