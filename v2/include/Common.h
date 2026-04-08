@@ -1,3 +1,4 @@
+//（基础常量、大小类、对齐）
 #pragma once
 #include <cstddef>
 #include <algorithm>
