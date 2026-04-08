@@ -33,7 +33,7 @@ namespace Kama_memoryPool
 
         //真正调用操作系统 API（Linux：mmap / Windows：VirtualAlloc）
         void* systemAlloc(size_t numPages); 
-                struct Span
+        struct Span
         {
             void*  pageAddr;   // 页起始地址
             size_t numPages;   // 占几页
