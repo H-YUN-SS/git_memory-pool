@@ -45,6 +45,7 @@ namespace Kama_memoryPool
         //key：页数（1、2、3、4...） value：对应页数的 Span 链表
         std::map<size_t, Span*> freeSpans_;
         //// 页号到span的映射，用于释放
+        
         std::map<void*, Span*> spanMap_;
         std::mutex mutex_;
     };
