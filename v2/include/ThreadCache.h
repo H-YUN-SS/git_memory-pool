@@ -17,5 +17,5 @@ namespace Kama_memoryPool
             static thread_local ThreadCache instance;
             return &instance;
         }
-    }
+    };
 }
