@@ -2,6 +2,7 @@
 #pragma once
 #include <cstddef>
 #include <algorithm>
+#include <array>
 // 全局常量：内存对齐大小（8字节，x86/x64通用）
 constexpr size_t ALIGNMENT = 8;
 // 内存池管理的最大字节数（超过则直接用系统malloc）
