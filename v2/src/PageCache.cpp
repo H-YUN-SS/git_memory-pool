@@ -100,5 +100,125 @@ namespace Kama_memoryPool
 
 
         }
+        //没有空闲Span → 直接向操作系统申请
+        void* memory = systemAlloc(numPages);
+        if(!memory)//申请失败
+        {
+            return nullptr;
+        }
+
+        Span* span = new Span;
+        span->pageAddr = memory;
+        span->numPages=numPages;
+        span->next=nullptr;
+
+
+        //记录到映射表
+        spanMap_[memory]=span;
+        // 返回给CentralCache
+        return memory;
+    }
+
+    // 函数功能：释放Span（把内存还给PageCache）
+    // 参数ptr：Span起始地址
+    // 参数numPages：页数
+
+    void PageCache::deallocateSpan(void* ptr,size_t numPages)
+    {
+        // 全局加锁（PageCache所有操作必须串行）
+        std::lock_guard<std::mutex>lock(mutex_);
+
+        //安全检查 通过地址找Span，找不到 → 不是我分配的，直接返回
+        auto it = spanMap_.find(ptr);
+        if(it == spanMap_.end())
+        {
+            return;
+        }
+        Span* span = it->second;
+
+        //合并相邻Span
+        void* nextAddr = static_cast<char*>(ptr) + numPages * PAGE_SIZE;
+        auto nextIt=spanMap_.find(nextAddr);
+        if(nextIt != spanMap_.end())
+        {
+
+            Span* nextSpan = nextIt->second;
+            // 标记：是否在空闲链表里找到nextSpan
+            bool found = false;
+            // 找到nextSpan所在的空闲链表
+            auto& nextList = freeSpans_[nextSpan->numPages];
+
+
+            // 情况1：nextSpan是链表头 → 直接移除
+            if(nextList == nextSpan)
+            {
+                nextList=nextSpan->next;
+                found=true;
+            }
+            //情况2：遍历链表找到nextSpan并移除
+            else if(nextList)
+            {
+                Span* prev = nextList;
+                while(prev->next)
+                {
+                    if(prev->next==nextSpan)
+                    {
+                        //从列表中移除
+                        prev->next = nextSpan ->next;
+                        found = true;
+                        break;
+                    }
+                    prev=prev->next;
+                }
+            }
+
+            //合并操作
+
+            if(found)
+            {
+                //当前Span页数 += 相邻Span页数
+                span->numPages+=nextSpan->numPages;
+
+                //从映射表删除被合并的Span
+                spanMap_.erase(nextAddr);
+
+                //释放被合并的Span结构体
+                delete nextSpan;
+            }
+        }
+
+        //头插法：把合并后的Span放回空闲链表
+        auto& list = freeSpans_[span->numPages];
+        span -> next = list;
+        list = span;
+    }
+
+    //函数功能：向操作系统申请numPages页内存（最底层）
+    void* PageCache::systemAlloc(size_t numPages)
+    {
+        // 总大小 = 页数 × 每页大小(4KB)
+        size_t size = numPages * PAGE_SIZE;
+
+        //mmap
+        // Linux系统调用：申请一段匿名私有内存
+        // nullptr：让系统自动选地址
+        // PROT_READ | PROT_WRITE：可读可写
+        // MAP_PRIVATE | MAP_ANONYMOUS：匿名映射（不关联文件），私有
+        // -1：无文件描述符
+
+        void* ptr = mmap(nullptr,size,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
+
+        //分配失败
+        if(ptr == MAP_FAILED)
+        {
+            return nullptr;
+        }
+
+        // 内存清零（安全规范）
+        memset(ptr,0,size);
+
+        // 返回系统分配的内存地址
+        return ptr;
+
     }
 }
