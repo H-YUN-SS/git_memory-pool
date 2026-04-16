@@ -12,7 +12,7 @@ namespace Kama_memoryPool
     {
         public:
         //操作系统一页固定 = 4096 字节（4KB） 内存池必须按页申请内存
-        static const size_t PAGESIZE=4096;
+        static const size_t PAGE_SIZE=4096;
         static PageCache& getInstance()
         {
             static PageCache instance;

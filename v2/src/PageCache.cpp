@@ -5,7 +5,7 @@
 维护页地址到Span的映射，支持反向查找
 */
 
-#include "PageCache.h"
+#include "../include/PageCache.h"
 
 
 /*
@@ -123,7 +123,7 @@ namespace Kama_memoryPool
     // 参数ptr：Span起始地址
     // 参数numPages：页数
 
-    void PageCache::deallocateSpan(void* ptr,size_t numPages)
+    void* PageCache::deallocateSpan(void* ptr,size_t numPages)
     {
         // 全局加锁（PageCache所有操作必须串行）
         std::lock_guard<std::mutex>lock(mutex_);
