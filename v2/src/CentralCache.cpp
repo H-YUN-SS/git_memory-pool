@@ -53,6 +53,75 @@ namespace Kama_memoryPool
 
     }
 
+    //核心函数 从中心缓存获取一段内存块
+    //参数index : 内存块大小对应的桶索引 （比如8字节、16字节.. 对应不同index
+    //返回值 ： 分配好的单个内存块地址
+
+    void* CentralCache::fetchRange(size_t index)
+    {
+        //检查索引是否越界 超过最大 返回空 （让系统malloc
+        //FREE_LIST_SIZE 内存池管理最大桶数量
+        if(index >= FREE_LIST_SIZE)
+        {
+            return nullptr;
+        }
+
+        //自旋锁 （高并发关键
+        //test_and_set: 原子操作 尝试将锁置为已加锁
+        //返回true 已被占用 循环等待
+        //std::memory_order_acquire: 获取内存序，保证加锁后代码不会重排到锁前面
+        while(locks_[index].test_and_set(std::memory_order_acquire))
+        {
+            //避免忙等待占CPU
+            //线程让步
+            std::this_thread::yield();//主动放弃cpu时间片
+        }
+
+        // 存储最终返回给用户的内存块地址
+        void*result =nullptr;
+
+        // try-catch：异常安全 → 即使抛异常，也能保证锁被释放
+        try
+        {
+            //原子锁：加载当前痛的空闲内存块链表头
+            result = centralFreeList_[index].load(std::memory_order_relaxed);
+
+            //如果当前桶没有空闲块 向PageCache申请新Span
+            if(!result)
+            {
+                //计算当前桶管理的内存块大小：（索引+1）*对齐大小
+                //index=0 8B ；1 16B..
+                size_t size = (index+1)*ALIGNMENT;
+
+                //调用函数 从PageCache申请一大段连续内存（Span
+                result = fetchFromPageCache(size);
+
+                //申请失败 解锁+返回空
+                if(!result)
+                {
+                    //clear:解锁; memory_order_release：释放内存序
+                    locks_[index].clear(std::memory_order_release);
+                    return nullptr;
+                }
+
+
+                //把连续Span切分成小块链表
+                //char* 坐字节级指针偏移
+
+                //计算实际分配的页数
+                //如果申请大小<=8页 默认8页
+                size_t numPages = (size <= SPAN_PAGES*PageCache::PAGE_SIZE)?SPAN_PAGES:(size+PageCache::PAGE_SIZE-1)/PageCache::PAGE_SIZE;
+                            // 计算这个Span能切分成多少个小内存块
+                // 总字节数 / 单个块大小
+                size_t blockNum = (numPages * PageCache::PAGE_SIZE) / size;
+            }
+        }
+        catch(...)
+        {
+
+        }
+        
+    }
 
 
 
