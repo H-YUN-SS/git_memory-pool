@@ -107,13 +107,31 @@ namespace Kama_memoryPool
 
                 //把连续Span切分成小块链表
                 //char* 坐字节级指针偏移
-
+                char* start = static_cast<char*>(result);
                 //计算实际分配的页数
                 //如果申请大小<=8页 默认8页
                 size_t numPages = (size <= SPAN_PAGES*PageCache::PAGE_SIZE)?SPAN_PAGES:(size+PageCache::PAGE_SIZE-1)/PageCache::PAGE_SIZE;
-                            // 计算这个Span能切分成多少个小内存块
+                // 计算这个Span能切分成多少个小内存块
                 // 总字节数 / 单个块大小
                 size_t blockNum = (numPages * PageCache::PAGE_SIZE) / size;
+
+                // 至少要切成2块以上，才能构建链表
+                if (blockNum > 1) 
+                {
+                    // 循环构建单向链表
+                    for (size_t i = 1; i < blockNum; ++i) 
+                    {
+                        // 当前块地址
+                        void* current = start + (i - 1) * size;
+                        // 下一个块地址
+                        void* next = start + i * size;
+
+                        // 强制类型转换 + 解引用
+                        // 把 current 地址处的内存，当成“存指针的变量”
+                        // 让当前块指向 下一个块（构建链表）
+                        *reinterpret_cast<void**>(current) = next;
+                    }
+                }
             }
         }
         catch(...)
