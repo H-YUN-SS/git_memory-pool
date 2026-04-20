@@ -60,6 +60,16 @@ namespace Kama_memoryPool
         }
     }
 
+    //③ 判断本地空闲块是否太多
+    bool ThreadCache::shouldReturnToCentralCache(size_t index)
+    {
+        size_t threshold = 256;
+        //超过256块就归还 避免一个线程占太多内存
+        return (freeListSize_[index]>threshold);
+    }
+
+    
+
 
 
 }
