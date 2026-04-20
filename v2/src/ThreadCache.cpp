@@ -68,6 +68,37 @@ namespace Kama_memoryPool
         return (freeListSize_[index]>threshold);
     }
 
+    //④ 从CentralCache 批量获取一批内存块
+    void* ThreadCache::fetchFromCentralCache(size_t index)
+    {
+        //向CentralCache申请一整串链表
+        void* start = CentralCache::getInstance().fetchRange(index);
+        if(!start)return nullptr;
+
+        //拿第一个块给用户
+        void* result = start;
+
+        //剩下的块 -> 挂到ThreadCache本地链表
+        freeList_[index] = *reinterpret_cast<void**>(start);
+
+        //遍历统计这批有多少个块
+        size_t batchNum = 0;
+        void* current = start;
+
+        while(current!= nullptr)
+        {
+            batchNum++;
+            current=*reinterpret_cast<void**>(current);//走到下一个块
+        }
+
+        //更新计数
+        freeListSize_[index] += batchNum;
+
+        //返回第一个块给用户
+        return result;
+
+    }
+
     
 
 
