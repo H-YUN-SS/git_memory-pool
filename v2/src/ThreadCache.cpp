@@ -30,6 +30,10 @@ namespace Kama_memoryPool
 
             return ptr;
         }
+        //本地链表空了 -> 去中心缓存 CentralCache 批量取
+        return fetchFromCentralCache(index);
 
     }
+
+    
 }
