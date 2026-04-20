@@ -4,7 +4,7 @@
 
 namespace Kama_memoryPool
 {
-    //线程向ThreadCache申请内存
+    //① 线程向ThreadCache申请内存
     void* ThreadCache::allocate(size_t size)
     {
         if(size == 0)
@@ -32,8 +32,34 @@ namespace Kama_memoryPool
         }
         //本地链表空了 -> 去中心缓存 CentralCache 批量取
         return fetchFromCentralCache(index);
-
     }
 
-    
+    //② 线程向 ThreadCache 释放内存
+    void ThreadCache::deallocate(void* ptr,size_t size)
+    {
+        //大对象直接调用系统 free
+        if(size > MAX_BYTES)
+        {
+            free(ptr);
+            return;
+        }
+        
+        //找到对应大小桶
+        size_t index = SizeClass::getIndex(size);
+
+        //头插法归还
+        *reinterpret_cast<void**>(ptr)=freeList_[index];
+        freeList_[index]=ptr;
+
+        freeListSize_[index]++;
+
+        //如果本地块太多，归还一部分给CentralCache
+        if(shouldReturnToCentralCache(index))
+        {
+            returnToCentralCache(freeList_[index],size);
+        }
+    }
+
+
+
 }

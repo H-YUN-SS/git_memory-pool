@@ -22,7 +22,7 @@ namespace Kama_memoryPool
         //申请内存
         void* allocate(size_t size);
         //释放内存
-        void* deallocate(void * ptr,size_t size);
+        void deallocate(void * ptr,size_t size);
 
         private:
         ThreadCache()
