@@ -99,6 +99,69 @@ namespace Kama_memoryPool
 
     }
 
+    //⑤将本地多余的内存 批量归还给CentralCache
+    void ThreadCache::returnToCentralCache(void* start,size_t size)
+    {
+        //找桶
+        size_t index = SizeClass::getIndex(size);
+
+        //对齐后真实块大小
+        size_t alignedSize = SizeClass::roundUp(size);
+
+        //这个桶的块总数
+        size_t batchNum = freeListSize_[index];
+        if(batchNum <= 1)
+        {
+            return;
+        }
+
+        //策略 保留四分之一
+        size_t keepNum = std::max(batchNum / 4,size_t(1));
+        size_t returnNum = batchNum - keepNum;
+
+        //初始化遍历指针
+        char* current = static_cast<char*>(start);
+        char* spliNode = current;
+
+        //遍历 找到保留部分的最后一块
+        for(size_t i = 0;i < keepNum - 1;i++)
+        {
+            //下一个节点
+            spliNode = reinterpret_cast<char*>(*reinterpret_cast<void**>(spliNode));
+            if(spliNode == nullptr)
+            {
+                //链表提前结束 修改归还数量
+                returnNum = batchNum - (i+1);
+                break;
+            }
+        }
+
+        if(spliNode != nullptr)
+        {
+            //1.断开链表
+            //要归还的链表头
+            void* nextNode = *reinterpret_cast<void**>(spliNode);
+            
+            //保留部分的最后一个节点 next置空（断开）
+            *reinterpret_cast<void**>(spliNode) = nullptr;
+
+            //2.更新线程缓存的自由链表（只保留keepNum个）
+            freeList_[index] = start;
+
+            //更新计数
+            freeListSize_[index]=keepNum;
+
+            //3.多余部分还给中心缓存
+            if(returnNum >0 && nextNode !=nullptr)
+            {
+                //returnRange(归还链表头 总字节数 下标)
+                CentralCache::getInstance().returnRange(nextNode,returnNum*alignedSize,index);
+            }
+        }
+
+
+    }
+
     
 
 
