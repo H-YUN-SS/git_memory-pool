@@ -22,7 +22,7 @@ namespace Kama_memoryPool
         void * allocateSpan(size_t numPages);
 
         // 释放span
-        void *deallocateSpan(void* ptr, size_t numPages);
+        void deallocateSpan(void* ptr, size_t numPages);
 
         private:
 
@@ -39,7 +39,6 @@ namespace Kama_memoryPool
             size_t numPages;   // 占几页
             Span*  next;       // 链表指针
         };
-        void* systemAlloc(size_t numPages);
 
         // 按页数管理空闲span
         //key：页数（1、2、3、4...） value：对应页数的 Span 链表
