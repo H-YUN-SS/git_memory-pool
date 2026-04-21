@@ -131,13 +131,62 @@ namespace Kama_memoryPool
                         // 让当前块指向 下一个块（构建链表）
                         *reinterpret_cast<void**>(current) = next;
                     }
+                    *reinterpret_cast<void**>(start + (blockNum - 1)*size)=nullptr;
+
+                    //取第一块给用户，剩下的挂到中央链表
+                    void* next = *reinterpret_cast<void**>(result);
+                    *reinterpret_cast<void**>(result) = nullptr;
+                    
+                    //更新中心缓存
+                    centralFreeList_[index].store(next,std::memory_order_release);
+
+                    //记录Span信息（用于回收） 
+                    // 使用无锁方式记录span信息
+                    // 做记录是为了将中心缓存多余内存块归还给页缓存做准备。考虑点：
+                    // 1.CentralCache 管理的是小块内存，这些内存可能不连续
+                    // 2.PageCache 的 deallocateSpan 要求归还连续的内存
+                    size_t trackerIndex = spanCount_++;
+                    if(trackerIndex < spanTrackers_.size())
+                    {
+                        spanTrackers_[trackerIndex].spanAddr.store(start,std::memory_order_release);
+                        spanTrackers_[trackerIndex].numPages.store(numPages,std::memory_order_release);
+                        spanTrackers_[trackerIndex].blockCount.store(blockNum,std::memory_order_release);   //共分配了blockNum个内存块
+                        spanTrackers_[trackerIndex].freeCount.store(blockNum-1,std::memory_order_release);  //第一个块resutl已被分配出去 初始空闲块数为blockNum-1
+                    }
+
                 }
             }
+            else
+            {
+                // 保存result的下一个节点
+                // 有空闲块直接取第一个
+                void* next = *reinterpret_cast<void**>(result);
+
+                // 将result与链表断开
+                *reinterpret_cast<void**>(result) = nullptr;
+
+                //更新中心缓存
+                centralFreeList_[index].store(next,std::memory_order_release);
+
+                //找到这个块属于哪个Span
+                SpanTracker* tracker = getSpanTracker(result);
+                if(tracker)
+                {
+                    //空闲块数量-1
+                    tracker->freeCount.fetch_sub(1,std::memory_order_release);
+                }
+            }
+
         }
         catch(...)
         {
-
+            //发生异常也要解锁
+            locks_[index].clear(std::memory_order_release);
+            throw;
         }
+        
+        locks_[index].clear(std::memory_order_release);
+        return result;
         
     }
 
