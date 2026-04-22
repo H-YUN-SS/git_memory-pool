@@ -190,6 +190,21 @@ namespace Kama_memoryPool
         
     }
 
+    // 检查是否需要执行延迟归还
+
+    bool CentralCache::shouldPerformDelayedReturn(size_t index,size_t currentCount,std::chrono::steady_clock::time_point currentTime)
+    {
+        //归还次数够多 归还
+        if(currentCount >= MAX_DELAY_COUNT)
+        {
+            return true;
+        }
+
+        //时间到了 归还
+        auto lastTime = lastReturnTimes_[index];
+        return (currentTime - lastTime) >= DELAY_INTERVAL;
+    }
+
 
 
     
