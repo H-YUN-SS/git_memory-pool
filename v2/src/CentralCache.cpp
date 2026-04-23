@@ -205,6 +205,36 @@ namespace Kama_memoryPool
         return (currentTime - lastTime) >= DELAY_INTERVAL;
     }
 
+    //真正把空闲span还给PageCache
+    void CentralCache::performDelayedReturn(size_t index)
+    {
+        //重置计数与时间
+        delayCounts_[index].store(0,std::memory_order_relaxed);
+        lastReturnTimes_[index]=std::chrono::steady_clock::now();
+
+        //统计每个span有多少空闲块
+        std::unordered_map<SpanTracker*,size_t>spanFreeCounts;
+        void* currentBlock = centralFreeList_[index].load(std::memory_order_relaxed);
+
+        while(currentBlock)
+        {
+            // 找到这个块属于哪个 Span
+            SpanTracker* tracker = getSpanTracker(currentBlock);
+            if(tracker)
+            {
+                // 给对应的Span计数+1
+                spanFreeCounts[tracker]++;
+            }
+            currentBlock = *reinterpret_cast<void**>(currentBlock);
+        }
+        for(const auto& [tracker,count]:spanFreeCounts)
+        {
+            // 更新每个span的空闲计数并检查是否可以归还
+            updateSpanFreeCount(tracker, count,index);
+        }
+    }
+
+
 
 
     
