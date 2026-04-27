@@ -235,6 +235,54 @@ namespace Kama_memoryPool
     }
 
 
+    void CentralCache::updateSpanFreeCount(SpanTracker* tracker,size_t newFreeBlocks,size_t index)
+    {
+        //空闲块+新归还
+        size_t oldFreeCount =tracker->freeCount.load(std::memory_order_relaxed);
+        size_t newFreeCount =oldFreeCount + newFreeBlocks;
+        //读用relaxed 写用release
+        tracker->freeCount.store(newFreeCount,std::memory_order_release);
+        
+        //空闲==总块 ->整个Span空闲
+        if(newFreeCount == tracker->blockCount.load(std::memory_order_relaxed))
+        {
+            void* spanAddr = tracker->spanAddr.load(std::memory_order_relaxed);
+            size_t numPages = tracker->numPages.load(std::memory_order_relaxed);
+
+            //从桶链表中删除整个Span的所有块
+            void* head = centralFreeList_[index].load(std::memory_order_relaxed);
+            void* newHead = head;
+            void* prev = nullptr;
+            void* current = head;
+
+            while(current)
+            {
+                void* next = *reinterpret_cast<void**>(current);
+                //判断当前块是否属于要归还的Span
+                if(current >= spanAddr && current < static_cast<char*>(spanAddr) + numPages * PageCache::PAGE_SIZE)
+                {
+                    if(prev)
+                    {
+                        *reinterpret_cast<void**>(prev) = next;
+                    }
+                    else
+                    {
+                        newHead = next;
+                    }
+                }
+                else 
+                {
+                    prev=current;
+                }
+                current = next;
+            } 
+            //更新桶链表
+            centralFreeList_[index].store(newHead,std::memory_order_release);
+            //把整个Span归还给PageCache
+            PageCache::getInstance().deallocateSpan(spanAddr,numPages);
+        }
+    }
+
 
 
     
