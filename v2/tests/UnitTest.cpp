@@ -36,6 +36,40 @@ void testBasicAllocation()
 
 }
 
+// 二、内存写入测试：分配内存 → 写入数据 → 读取验证 → 释放
+// 目的：确保分配的内存可正常读写，没有越界/损坏
+void testMemoryWriting()
+{
+    std::cout << "Running memory writing test..." << std::endl;
+
+    //要分配的内存大小 ： 128字节
+    const size_t size = 128;
+    //allocate 返回 void* 强转成char* 方便按字节写入
+    char* ptr = static_cast<char*>(MemoryPool::allocate(size));
+    //断言：分配成功
+    assert(ptr != nullptr);
+
+    //--- 写入数据
+    //循环0-127 每个位置写入i%256 (char范围)
+    for(size_t i = 0;i < size;i++)
+    {
+        ptr[i]=static_cast<char>( i% 256);
+    }
+
+    //---验证数据
+    for(size_t i = 0;i < size;i++)
+    {
+        // 断言：读取的值 == 写入的值
+        assert(ptr[i] == static_cast<char>(i % 256));
+    }
+
+    //释放内存
+    MemoryPool::deallocate(ptr,size);
+    std::cout << "Memory writing test passed!" << std::endl;
+
+}
+
+
 int main()
 {
     try
