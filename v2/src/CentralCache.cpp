@@ -284,6 +284,43 @@ namespace Kama_memoryPool
     }
 
 
+    //向PageCache申请Span
+    void* CentralCache::fetchFromPageCache(size_t size)
+    {
+        //计算所需页数
+        size_t numPages = (size + PageCache::PAGE_SIZE -1)  /  PageCache::PAGE_SIZE;
+
+        //小内存：固定申请8页
+        if(size <= SPAN_PAGES * PageCache::PAGE_SIZE)
+        {
+            return PageCache::getInstance().allocateSpan(SPAN_PAGES);
+        }    
+
+        else
+        {
+            return PageCache::getInstance().allocateSpan(numPages);
+        }
+    }
+
+    //根据内存块 找到他属于的Span
+    SpanTracker* CentralCache::getSpanTracker(void* blockAddr)
+    {
+        //遍历所有Span
+        for(size_t i=0;i < spanCount_.load(std::memory_order_relaxed);i++)
+        {
+            void* spanAddr = spanTrackers_[i].spanAddr.load(std::memory_order_relaxed);
+            size_t numPages = spanTrackers_[i].numPages.load(std::memory_order_relaxed);
+
+            if(blockAddr >= spanAddr && blockAddr < static_cast<char*>(spanAddr) + numPages * PageCache::PAGE_SIZE)
+            {
+                return &spanTrackers_[i];
+            }
+            return nullptr;
+        }
+    }
+
+
+
 
     
 
