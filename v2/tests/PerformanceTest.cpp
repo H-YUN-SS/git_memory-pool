@@ -38,4 +38,50 @@ class PerformanceTest
 {
 private:
     //内部结构体：用来存储测试统计数据
-}
+    struct TestStats
+    {
+        double memPoolTime{0.0};    //内存池耗时
+        double systemTime{0.0};     //系统new/delete耗时
+        size_t totalAlloc{0};       //总分配次数
+        size_t totalBytes{0};       //总分配字节数
+
+    };
+public:
+    //1.系统预热
+    //操作系统和内存池首次运行时会有初始化开销（如分配页表、创建缓存）
+    //预热可以消除这些一次性开销，让测试结果更准确
+    static void warmup() 
+    {
+        std::cout << "Warming up memory systems...\n";
+        
+        // 创建vector存储预热时分配的内存指针和大小
+        // pair<void*, size_t>：第一个元素是内存指针，第二个是分配的大小
+        std::vector<std::pair<void*, size_t>> warmupPtrs;
+        
+        // 循环1000次，分配各种常见大小的内存
+        for (int i = 0; i < 1000; ++i) 
+        {
+            // 【语法】范围for循环（C++11）：遍历数组中的每个元素
+            // 这里遍历8、16、32...1024这些内存池最常用的大小
+            for (size_t size : {8, 16, 32, 64, 128, 256, 512, 1024}) {
+                // 分配内存
+                void* p = MemoryPool::allocate(size);
+                // 【语法】emplace_back：直接在vector末尾构造对象，比push_back高效
+                warmupPtrs.emplace_back(p, size);
+            }
+        }
+        
+        // 释放所有预热分配的内存
+        // 【语法】结构化绑定（C++17）：直接从pair中提取ptr和size
+        // 等价于：for (const auto& item : warmupPtrs) {
+        //           void* ptr = item.first;
+        //           size_t size = item.second;
+        //         }
+        for (const auto& [ptr, size] : warmupPtrs) 
+        {
+            MemoryPool::deallocate(ptr, size);
+        }
+        
+        std::cout << "Warmup complete.\n\n";
+    }
+};
