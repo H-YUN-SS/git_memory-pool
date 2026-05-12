@@ -84,4 +84,114 @@ public:
         
         std::cout << "Warmup complete.\n\n";
     }
+
+    //小对象分配性能测试
+    static void testSmallAllocation()
+    {
+        constexpr size_t NUM_ALLOCS = 50000; //总共分配50000次
+
+        const size_t SIZES[] = {8,16,32,64,128,256};
+
+        // 计算数组元素个数：总字节数 / 单个元素字节数
+        const size_t NUM_SIZES = sizeof(SIZES) / sizeof(SIZES[0]);
+        std::cout << "\nTesting small allocations (" << NUM_ALLOCS 
+                  << " allocations of fixed sizes):" << std::endl;
+
+
+        //测试内存池
+        {
+            Timer t;
+            
+            std::array<std::vector<std::pair<void*,size_t>>,NUM_SIZES> sizePtrs;
+            //预分配vector空间
+            for(auto& ptrs : sizePtrs)
+            {
+                ptrs.reserve(NUM_ALLOCS / NUM_SIZES);
+            }
+
+            //循环分配5万次内存
+            for(size_t i = 0; i < NUM_ALLOCS; i++)
+            {
+                //循环使用不同大小的内存，模拟真实场景
+                size_t sizeIndex = i % NUM_SIZES;
+                size_t size = SIZES[sizeIndex];
+
+                //用内存池分配内存
+                void*ptr = MemoryPool::allocate(size);
+                //存入对应大小的vector中
+                sizePtrs[sizeIndex].push_back({ptr,size});
+
+                //模拟真实使用，每四次分配随机释放一个已分配的内存
+                if(i%4==0)
+                {
+                    //随机选择一个大小类别
+                    size_t releaseIndex = rand() % NUM_SIZES;
+                    auto& ptrs = sizePtrs[releaseIndex];
+
+                    //如果该类别有内存，释放最后一个
+                    if(!ptrs.empty())
+                    {
+                        MemoryPool::deallocate(ptrs.back().first,ptrs.back().second);
+                        ptrs.pop_back();
+                    }
+                }
+            }
+
+            for(auto& ptrs : sizePtrs)
+            {
+                for(const auto& [ptr,size] : ptrs)
+                {
+                    MemoryPool::deallocate(ptr,size);
+                }
+            }
+
+            std::cout<<"Memory Pool: "<<std::fixed <<std::setprecision(3)<<t.elapsed()<<" ms"<<std::endl;
+
+            
+        }
+
+
+        //测试系统new/delete
+        {
+            Timer t;
+            std::array<std::vector<std::pair<void*,size_t>>,NUM_SIZES>sizePtrs;
+            for (auto& ptrs : sizePtrs)
+            {
+                ptrs.reserve(NUM_ALLOCS / NUM_SIZES);
+            }
+
+            for(size_t i = 0;i < NUM_ALLOCS; i++)
+            {
+                size_t sizeIndex = i % NUM_SIZES;
+                size_t size = SIZES[sizeIndex];
+                // 用系统new分配内存：分配size个char大小的空间
+                void* ptr = new char[size];
+                sizePtrs[sizeIndex].push_back({ptr,size});
+
+                if(i % 4 == 0)
+                {
+                    size_t releaseIndex = rand() % NUM_SIZES;
+                    auto& ptrs = sizePtrs[releaseIndex];
+
+                    if(!ptrs.empty())
+                    {
+                        //用系统delete释放数组内存
+                        delete[] static_cast<char*>(ptrs.back().first);
+                        ptrs.pop_back();
+                    }
+                }
+            }
+            for(auto& ptrs : sizePtrs)
+            {
+                for(const auto&[ptr,size] : ptrs)
+                {
+                    delete[] static_cast<char*>(ptr);
+                }
+            }
+
+            std::cout<< "New/Delete: " << std::fixed << std::setprecision(3)  << t.elapsed() << " ms" << std::endl;
+        }
+
+
+    }
 };
