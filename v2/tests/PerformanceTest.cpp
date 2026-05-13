@@ -349,4 +349,30 @@ public:
         }
 
     }
+
+
+    //4.混合大小测试
+    //测试小中大内存混合分配的性能
+    static void testMixedSizes()
+    {
+        //10万次分配 
+        constexpr size_t NUM_ALLOCS = 100000;
+
+        //小对象 8-128字节
+        const size_t SMALL_SIZES[] = {8, 16, 32, 64, 128};
+
+        //中等对象 256-512字节
+        const size_t MEDIUM_SIZES[] = {256, 384, 512};
+
+        //大对象 1024-4096字节
+        const size_t LARGE_SIZES[] = {1024, 2048, 4096};
+        
+        // 计算每种大小数量
+        const size_t NUM_SMALL = sizeof(SMALL_SIZES) / sizeof(SMALL_SIZES[0]);
+        const size_t NUM_MEDIUM = sizeof(MEDIUM_SIZES) / sizeof(MEDIUM_SIZES[0]);
+        const size_t NUM_LARGE = sizeof(LARGE_SIZES) / sizeof(LARGE_SIZES[0]);
+        
+        std::cout << "\nTesting mixed size allocations (" << NUM_ALLOCS 
+                  << " allocations with fixed sizes):" << std::endl;
+    }
 };
