@@ -4,6 +4,7 @@
 #include <cassert>
 #include <thread>
 #include <chrono>
+#include <unordered_map>  // 只补这一行，必须加，否则编译报错
 
 namespace Kama_memoryPool
 {
@@ -190,6 +191,52 @@ namespace Kama_memoryPool
         
     }
 
+
+void CentralCache::returnRange(void* start, size_t size, size_t index)
+{
+    if (!start || index >= FREE_LIST_SIZE) 
+        return;
+
+    size_t blockSize = (index + 1) * ALIGNMENT;
+    size_t blockCount = size / blockSize;    
+
+    while (locks_[index].test_and_set(std::memory_order_acquire)) 
+    {
+        std::this_thread::yield();
+    }
+
+    try 
+    {
+        // 1. 将归还的链表连接到中心缓存
+        void* end = start;
+        size_t count = 1;
+        while (*reinterpret_cast<void**>(end) != nullptr && count < blockCount) {
+            end = *reinterpret_cast<void**>(end);
+            count++;
+        }
+        void* current = centralFreeList_[index].load(std::memory_order_relaxed);
+        *reinterpret_cast<void**>(end) = current; 
+        centralFreeList_[index].store(start, std::memory_order_release);
+        
+        // 2. 更新延迟计数
+        size_t currentCount = delayCounts_[index].fetch_add(1, std::memory_order_relaxed) + 1;
+        auto currentTime = std::chrono::steady_clock::now();
+        
+        // 3. 检查是否需要执行延迟归还
+        if (shouldPerformDelayedReturn(index, currentCount, currentTime))
+        {
+            performDelayedReturn(index);
+        }
+    }
+    catch (...) 
+    {
+        locks_[index].clear(std::memory_order_release);
+        throw;
+    }
+
+    locks_[index].clear(std::memory_order_release);
+}
+
     // 检查是否需要执行延迟归还
 
     bool CentralCache::shouldPerformDelayedReturn(size_t index,size_t currentCount,std::chrono::steady_clock::time_point currentTime)
@@ -315,13 +362,9 @@ namespace Kama_memoryPool
             {
                 return &spanTrackers_[i];
             }
-            return nullptr;
         }
+
+        return nullptr;
     }
-
-
-
-
-    
 
 }

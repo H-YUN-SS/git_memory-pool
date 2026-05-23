@@ -374,5 +374,94 @@ public:
         
         std::cout << "\nTesting mixed size allocations (" << NUM_ALLOCS 
                   << " allocations with fixed sizes):" << std::endl;
+
+
+        //测试 内存池
+        {
+            Timer t;
+            std::array<std::vector<std::pair<void*,size_t>>,NUM_SMALL + NUM_MEDIUM + NUM_LARGE> sizePtrs;
+            for(auto& ptrs : sizePtrs)
+            {
+                ptrs.reserve(NUM_ALLOCS / (NUM_SMALL + NUM_MEDIUM + NUM_LARGE));
+            }
+            //10万次分配
+            for(size_t i =0 ; i<NUM_ALLOCS;i++)
+            {
+                size_t size;
+                //用循环模拟概率 
+                int category = i%100;
+
+                if(category<60)
+                {
+                    //小对象
+                    size_t index =(i/60)%NUM_SMALL;
+                    size = SMALL_SIZES[index];
+
+                }
+                else if(category <90)
+                {
+                    //中对象
+                    size_t index = (i/30)%NUM_MEDIUM;
+                    size =  MEDIUM_SIZES[index];
+                }
+                else
+                {
+                    //大对象
+                    size_t index = (i/10)%NUM_LARGE;
+                    size = LARGE_SIZES[index];
+                }
+
+                // 内存池分配
+                void* ptr = MemoryPool::allocate(size);
+                // 计算对应的数组索引
+                size_t ptrIndex = (category < 60) ? (i / 60) % NUM_SMALL :(category < 90) ? NUM_SMALL + (i / 30) % NUM_MEDIUM :NUM_SMALL + NUM_MEDIUM + (i / 10) % NUM_LARGE;
+                sizePtrs[ptrIndex].push_back({ptr,size});
+
+                // 每50次分配，批量释放
+                if(i%50==0)
+                {
+                    size_t  releaseIndex = rand()  % sizePtrs.size();
+                    auto& ptrs = sizePtrs[releaseIndex];
+
+                    if(!ptrs.empty())
+                    {
+                        size_t releaseCount = ptrs.size() * (20 + (rand()%11))/100;
+                        releaseCount = std::min(releaseCount,ptrs.size());
+
+                        for(size_t j=0; j<releaseCount;j++)
+                        {
+                            size_t index = rand()%ptrs.size();
+                            MemoryPool::deallocate(ptrs[index].first,ptrs[index].second);
+                            ptrs[index] = ptrs.back();
+                            ptrs.pop_back();
+                        }
+                    }
+                }
+            }
+            for(auto& ptrs :sizePtrs)
+            {
+                for(const auto& [ptr,size]:ptrs)
+                {
+                    delete[] static_cast<char*>(ptr);
+                }
+            }
+            std::cout << "New/Delete: " << std::fixed << std::setprecision(3) << t.elapsed() << " ms" << std::endl;
+        }
     }
+
 };
+
+int main()
+{
+    std::cout << "Starting performance tests..." << std::endl;
+        // 调用预热函数
+    PerformanceTest::warmup();
+    
+    // 依次运行3个核心测试
+    PerformanceTest::testSmallAllocation();
+    PerformanceTest::testMultiThreaded();
+    PerformanceTest::testMixedSizes();
+    
+    // 程序正常结束
+    return 0;
+}
