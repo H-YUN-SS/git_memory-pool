@@ -3,312 +3,248 @@
 #include <vector>
 #include <chrono>
 #include <random>
-#include <iomanip>  //输出格式控制 设置浮点数精度 （保留三位小数
+#include <iomanip>
 #include <thread>
 #include <array>
 
 using namespace Kama_memoryPool;
 using namespace std::chrono;
 
-class Timer
+// 计时器类
+class Timer 
 {
-    //私有成员变量：存储计时器启动时的时间点
     high_resolution_clock::time_point start;
-
 public:
-    //构造函数：创建Timer对象时自动调用，记录当前时间
-    //【语法】构造函数初始化列表：比在函数体内赋值更高效
-
-    Timer() : start(high_resolution_clock::now()){}
-
-    //成员函数：计算从Timer创建到现在经过的时间（单位：毫秒）
-    double elapsed()
+    Timer() : start(high_resolution_clock::now()) {}
+    
+    double elapsed() 
     {
-        //获取当前时间点
         auto end = high_resolution_clock::now();
-
-        //计算时间差 ： end - start = 微秒数 ->除以1000转成毫秒
-        //duration_cast:强制转换时间单位
-        return duration_cast<microseconds>(end-start).count()/1000.0;
+        return duration_cast<microseconds>(end - start).count() / 1000.0; // 转换为毫秒
     }
 };
 
-//性能测试类 所有性能测试逻辑都在这里
-class PerformanceTest
+// 性能测试类
+class PerformanceTest 
 {
 private:
-    //内部结构体：用来存储测试统计数据
-    struct TestStats
+    // 测试统计信息
+    struct TestStats 
     {
-        double memPoolTime{0.0};    //内存池耗时
-        double systemTime{0.0};     //系统new/delete耗时
-        size_t totalAlloc{0};       //总分配次数
-        size_t totalBytes{0};       //总分配字节数
-
+        double memPoolTime{0.0};
+        double systemTime{0.0};
+        size_t totalAllocs{0};
+        size_t totalBytes{0};
     };
+
 public:
-    //1.系统预热
-    //操作系统和内存池首次运行时会有初始化开销（如分配页表、创建缓存）
-    //预热可以消除这些一次性开销，让测试结果更准确
+    // 1. 系统预热
     static void warmup() 
     {
         std::cout << "Warming up memory systems...\n";
-        
-        // 创建vector存储预热时分配的内存指针和大小
-        // pair<void*, size_t>：第一个元素是内存指针，第二个是分配的大小
+        // 使用 pair 来存储指针和对应的大小
         std::vector<std::pair<void*, size_t>> warmupPtrs;
         
-        // 循环1000次，分配各种常见大小的内存
+        // 预热内存池
         for (int i = 0; i < 1000; ++i) 
         {
-            // 【语法】范围for循环（C++11）：遍历数组中的每个元素
-            // 这里遍历8、16、32...1024这些内存池最常用的大小
             for (size_t size : {8, 16, 32, 64, 128, 256, 512, 1024}) {
-                // 分配内存
                 void* p = MemoryPool::allocate(size);
-                // 【语法】emplace_back：直接在vector末尾构造对象，比push_back高效
-                warmupPtrs.emplace_back(p, size);
+                warmupPtrs.emplace_back(p, size);  // 存储指针和对应的大小
             }
         }
         
-        // 释放所有预热分配的内存
-        // 【语法】结构化绑定（C++17）：直接从pair中提取ptr和size
-        // 等价于：for (const auto& item : warmupPtrs) {
-        //           void* ptr = item.first;
-        //           size_t size = item.second;
-        //         }
+        // 释放预热内存
         for (const auto& [ptr, size] : warmupPtrs) 
         {
-            MemoryPool::deallocate(ptr, size);
+            MemoryPool::deallocate(ptr, size);  // 使用实际分配的大小进行释放
         }
         
         std::cout << "Warmup complete.\n\n";
     }
 
-    //小对象分配性能测试
-    static void testSmallAllocation()
+    // 2. 小对象分配测试
+    static void testSmallAllocation() 
     {
-        constexpr size_t NUM_ALLOCS = 50000; //总共分配50000次
-        // 测试的内存大小数组
-        const size_t SIZES[] = {8,16,32,64,128,256};
-
-        // 计算数组元素个数：总字节数 / 单个元素字节数
+        constexpr size_t NUM_ALLOCS = 50000;
+        // 使用固定的几个小对象大小，这些大小都是内存池最优化的大小
+        const size_t SIZES[] = {8, 16, 32, 64, 128, 256};
         const size_t NUM_SIZES = sizeof(SIZES) / sizeof(SIZES[0]);
+        
         std::cout << "\nTesting small allocations (" << NUM_ALLOCS 
                   << " allocations of fixed sizes):" << std::endl;
-
-
-        //测试内存池
+        
+        // 测试内存池
         {
             Timer t;
-            
-            std::array<std::vector<std::pair<void*,size_t>>,NUM_SIZES> sizePtrs;
-            //预分配vector空间
-            for(auto& ptrs : sizePtrs)
-            {
+            // 按大小分类存储内存块
+            std::array<std::vector<std::pair<void*, size_t>>, NUM_SIZES> sizePtrs;
+            for (auto& ptrs : sizePtrs) {
                 ptrs.reserve(NUM_ALLOCS / NUM_SIZES);
             }
-
-            //循环分配5万次内存
-            for(size_t i = 0; i < NUM_ALLOCS; i++)
+            
+            for (size_t i = 0; i < NUM_ALLOCS; ++i) 
             {
-                //循环使用不同大小的内存，模拟真实场景
+                // 循环使用不同大小
                 size_t sizeIndex = i % NUM_SIZES;
                 size_t size = SIZES[sizeIndex];
-
-                //用内存池分配内存
-                void*ptr = MemoryPool::allocate(size);
-                //存入对应大小的vector中
-                sizePtrs[sizeIndex].push_back({ptr,size});
-
-                //模拟真实使用，每四次分配随机释放一个已分配的内存
-                if(i%4==0)
+                void* ptr = MemoryPool::allocate(size);
+                sizePtrs[sizeIndex].push_back({ptr, size});
+                
+                // 模拟真实使用：部分立即释放
+                if (i % 4 == 0) 
                 {
-                    //随机选择一个大小类别
+                    // 随机选择一个大小类别进行释放
                     size_t releaseIndex = rand() % NUM_SIZES;
                     auto& ptrs = sizePtrs[releaseIndex];
-
-                    //如果该类别有内存，释放最后一个
-                    if(!ptrs.empty())
+                    
+                    if (!ptrs.empty()) 
                     {
-                        MemoryPool::deallocate(ptrs.back().first,ptrs.back().second);
+                        MemoryPool::deallocate(ptrs.back().first, ptrs.back().second);
                         ptrs.pop_back();
                     }
                 }
             }
-
-            for(auto& ptrs : sizePtrs)
+            
+            // 清理剩余内存
+            for (auto& ptrs : sizePtrs) 
             {
-                for(const auto& [ptr,size] : ptrs)
+                for (const auto& [ptr, size] : ptrs) 
                 {
-                    MemoryPool::deallocate(ptr,size);
+                    MemoryPool::deallocate(ptr, size);
                 }
             }
-
-            std::cout<<"Memory Pool: "<<std::fixed <<std::setprecision(3)<<t.elapsed()<<" ms"<<std::endl;
-
             
+            std::cout << "Memory Pool: " << std::fixed << std::setprecision(3) 
+                      << t.elapsed() << " ms" << std::endl;
         }
-
-
-        //测试系统new/delete
+        
+        // 测试new/delete
         {
             Timer t;
-            std::array<std::vector<std::pair<void*,size_t>>,NUM_SIZES>sizePtrs;
-            for (auto& ptrs : sizePtrs)
-            {
+            std::array<std::vector<std::pair<void*, size_t>>, NUM_SIZES> sizePtrs;
+            for (auto& ptrs : sizePtrs) {
                 ptrs.reserve(NUM_ALLOCS / NUM_SIZES);
             }
-
-            for(size_t i = 0;i < NUM_ALLOCS; i++)
+            
+            for (size_t i = 0; i < NUM_ALLOCS; ++i) 
             {
                 size_t sizeIndex = i % NUM_SIZES;
                 size_t size = SIZES[sizeIndex];
-                // 用系统new分配内存：分配size个char大小的空间
                 void* ptr = new char[size];
-                sizePtrs[sizeIndex].push_back({ptr,size});
-
-                if(i % 4 == 0)
+                sizePtrs[sizeIndex].push_back({ptr, size});
+                
+                if (i % 4 == 0) 
                 {
                     size_t releaseIndex = rand() % NUM_SIZES;
                     auto& ptrs = sizePtrs[releaseIndex];
-
-                    if(!ptrs.empty())
+                    
+                    if (!ptrs.empty()) 
                     {
-                        //用系统delete释放数组内存
                         delete[] static_cast<char*>(ptrs.back().first);
                         ptrs.pop_back();
                     }
                 }
             }
-            for(auto& ptrs : sizePtrs)
+            
+            for (auto& ptrs : sizePtrs) 
             {
-                for(const auto&[ptr,size] : ptrs)
+                for (const auto& [ptr, size] : ptrs) 
                 {
                     delete[] static_cast<char*>(ptr);
                 }
             }
-
-            std::cout<< "New/Delete: " << std::fixed << std::setprecision(3)  << t.elapsed() << " ms" << std::endl;
+            
+            std::cout << "New/Delete: " << std::fixed << std::setprecision(3) 
+                      << t.elapsed() << " ms" << std::endl;
         }
-
-
     }
-
-
-    //3.多线程并发性能测试
-    //测试目标：多线程同时分配释放内存时，内存池的线程安全和性能
-    static void testMultiThreaded()
+    
+    // 3. 多线程测试
+    static void testMultiThreaded() 
     {
-        constexpr size_t NUM_THREADS = 4;   //四个线程
-        constexpr size_t ALLOCS_PER_THREAD = 25000; //每个线程分配2.5万次
-
+        constexpr size_t NUM_THREADS = 4;
+        constexpr size_t ALLOCS_PER_THREAD = 25000;
+        
         std::cout << "\nTesting multi-threaded allocations (" << NUM_THREADS 
-                    << " threads, " << ALLOCS_PER_THREAD << " allocations each):" 
-                    << std::endl;
-
-        //线程执行函数
-        //Lambda匿名函数：useMemPool=true用内存池，false用new
-        auto threadFunc = [](bool useMemPool)
+                  << " threads, " << ALLOCS_PER_THREAD << " allocations each):" 
+                  << std::endl;
+        
+        auto threadFunc = [](bool useMemPool) 
         {
             std::random_device rd;
             std::mt19937 gen(rd());
-
-            //测试内存大小
-            const size_t SIZES[] = {8,16,32,64,128,256};
-
-            //计算大小个数
+            
+            // 使用固定的几个大小，这样可以更好地测试内存池的复用能力
+            const size_t SIZES[] = {8, 16, 32, 64, 128, 256};
             const size_t NUM_SIZES = sizeof(SIZES) / sizeof(SIZES[0]);
-
-            //每个线程独立维护内存列表
-            std::array<std::vector<std::pair<void*,size_t>>,NUM_SIZES> sizePtrs;
-            //预分配空间
-            for(auto& ptrs : sizePtrs)
-            {
+            
+            // 每个线程维护自己的内存块列表，按大小分类存储
+            std::array<std::vector<std::pair<void*, size_t>>, NUM_SIZES> sizePtrs;
+            for (auto& ptrs : sizePtrs) {
                 ptrs.reserve(ALLOCS_PER_THREAD / NUM_SIZES);
             }
             
-            //线程内部分配循环
-            for(size_t i=0;i < ALLOCS_PER_THREAD;i++)
+            // 模拟真实应用中的内存使用模式
+            for (size_t i = 0; i < ALLOCS_PER_THREAD; ++i) 
             {
-                //循环选择内存大小
-                size_t sizeIndex = i % NUM_SIZES;
+                // 1. 分配阶段：优先使用ThreadCache
+                size_t sizeIndex = i % NUM_SIZES;  // 循环使用不同大小
                 size_t size = SIZES[sizeIndex];
+                void* ptr = useMemPool ? MemoryPool::allocate(size) 
+                                     : new char[size];
+                sizePtrs[sizeIndex].push_back({ptr, size});
                 
-                void* ptr = useMemPool ? MemoryPool::allocate(size) : new char[size];
-
-                //存入列表
-                sizePtrs[sizeIndex].push_back({ptr,size});
-
-                //每100次分配，批量释放部分内存
-                if(i%100==0)
+                // 2. 释放阶段：测试内存复用
+                if (i % 100 == 0)  // 每100次分配
                 {
-                    //随机选择大小类别
+                    // 随机选择一个大小类别进行批量释放
                     size_t releaseIndex = rand() % NUM_SIZES;
                     auto& ptrs = sizePtrs[releaseIndex];
-
-                    if(!ptrs.empty())
+                    
+                    if (!ptrs.empty()) 
                     {
-                        //随机释放数量： 20%-30%
-                        size_t releaseCount = ptrs.size() * (20+(rand()%11)) / 100;
-                        //防止越界
-                        releaseCount = std::min(releaseCount,ptrs.size());
-
-                        //循环释放
-                        for(size_t j=0;j < releaseCount; j++)
+                        // 释放该大小类别中20%-30%的内存块
+                        size_t releaseCount = ptrs.size() * (20 + (rand() % 11)) / 100;
+                        releaseCount = std::min(releaseCount, ptrs.size());
+                        
+                        for (size_t j = 0; j < releaseCount; ++j) 
                         {
-                            //随机选择一个内存块
                             size_t index = rand() % ptrs.size();
-
-                            //判断释放方式
-                            if(useMemPool)
+                            if (useMemPool) 
                             {
-                                MemoryPool::deallocate(ptrs[index].first,ptrs[index].second);
-
-                            }
-                            else
+                                MemoryPool::deallocate(ptrs[index].first, ptrs[index].second);
+                            } 
+                            else 
                             {
                                 delete[] static_cast<char*>(ptrs[index].first);
                             }
-
-                            //快速删除元素：最后一个覆盖、再删除最后一个
                             ptrs[index] = ptrs.back();
                             ptrs.pop_back();
                         }
                     }
                 }
-                if(i%1000==0)
+                
+                // 3. 内存压力测试：测试CentralCache的竞争
+                if (i % 1000 == 0)  // 每1000次分配
                 {
-                    //临时存储压力测试的内存
-                    std::vector<std::pair<void*,size_t>>pressurePtrs;
-                    for(int j = 0;j < 50; j++)
+                    // 短暂地分配大量内存，触发CentralCache的竞争
+                    std::vector<std::pair<void*, size_t>> pressurePtrs;
+                    for (int j = 0; j < 50; ++j) 
                     {
                         size_t size = SIZES[rand() % NUM_SIZES];
-                        void* ptr = useMemPool ? MemoryPool::allocate(size) : new char[size];
-                        pressurePtrs.push_back({ptr,size});
+                        void* ptr = useMemPool ? MemoryPool::allocate(size)
+                                             : new char[size];
+                        pressurePtrs.push_back({ptr, size});
                     }
-                    for(const auto& [ptr,size] : pressurePtrs)
+                    
+                    // 立即释放这些内存，测试内存池的回收效率
+                    for (const auto& [ptr, size] : pressurePtrs) 
                     {
-                        if(useMemPool)
+                        if (useMemPool) 
                         {
-                            MemoryPool::deallocate(ptr,size);
-                            
-                        }
-                        else
-                        {
-                            delete[] static_cast<char*>(ptr);
-                        }
-                    }
-                }
-                //清理所有内存
-                for(auto& ptrs : sizePtrs)
-                {
-                    for(const auto& [ptr,size] : ptrs)
-                    {
-                        if(useMemPool)
-                        {
-                            MemoryPool::deallocate(ptr,size);       
-                        }
+                            MemoryPool::deallocate(ptr, size);
+                        } 
                         else 
                         {
                             delete[] static_cast<char*>(ptr);
@@ -316,152 +252,232 @@ public:
                     }
                 }
             }
+            
+            // 清理所有剩余内存
+            for (auto& ptrs : sizePtrs) 
+            {
+                for (const auto& [ptr, size] : ptrs) 
+                {
+                    if (useMemPool) 
+                    {
+                        MemoryPool::deallocate(ptr, size);
+                    } 
+                    else 
+                    {
+                        delete[] static_cast<char*>(ptr);
+                    }
+                }
+            }
         };
-        //内存池
+        
+        // 测试内存池
         {
             Timer t;
             std::vector<std::thread> threads;
-
-            //创建4个线程
-            for(size_t i = 0;i < NUM_THREADS;i++)
+            
+            for (size_t i = 0; i < NUM_THREADS; ++i) 
             {
-                threads.emplace_back(threadFunc,true);
+                threads.emplace_back(threadFunc, true);
             }
-
-            //等待所有线程结束
-            for(auto& thread : threads) 
+            
+            for (auto& thread : threads) 
             {
                 thread.join();
             }
-            std::cout<<"Memory Pool: "<<std::fixed <<std::setprecision(3)<<t.elapsed()<<" ms"<<std::endl;
+            
+            std::cout << "Memory Pool: " << std::fixed << std::setprecision(3) 
+                      << t.elapsed() << " ms" << std::endl;
         }
-
-        //测试 new/delete
+        
+        // 测试new/delete
         {
             Timer t;
-            std::vector<std::thread>threads;
-            for(size_t i = 0;i < NUM_THREADS;i++)
+            std::vector<std::thread> threads;
+            
+            for (size_t i = 0; i < NUM_THREADS; ++i) 
             {
-                threads.emplace_back(threadFunc,false);
+                threads.emplace_back(threadFunc, false);
             }
-            for(auto& thread : threads)thread.join();
-            std::cout<<"New/Delete: "<<std::fixed<<std::setprecision(3)<<t.elapsed()<<" ms"<<std::endl;
+            
+            for (auto& thread : threads) 
+            {
+                thread.join();
+            }
+            
+            std::cout << "New/Delete: " << std::fixed << std::setprecision(3) 
+                      << t.elapsed() << " ms" << std::endl;
         }
-
     }
-
-
-    //4.混合大小测试
-    //测试小中大内存混合分配的性能
-    static void testMixedSizes()
+    
+    // 4. 混合大小测试
+    static void testMixedSizes() 
     {
-        //10万次分配 
         constexpr size_t NUM_ALLOCS = 100000;
-
-        //小对象 8-128字节
+        // 按照内存池的设计特点，将大小分为三类：
+        // 1. 小对象: 适合ThreadCache
+        // 2. 中等对象: 适合CentralCache
+        // 3. 大对象: 适合PageCache
+        
+        // 使用固定的测试数据
         const size_t SMALL_SIZES[] = {8, 16, 32, 64, 128};
-
-        //中等对象 256-512字节
         const size_t MEDIUM_SIZES[] = {256, 384, 512};
-
-        //大对象 1024-4096字节
         const size_t LARGE_SIZES[] = {1024, 2048, 4096};
         
-        // 计算每种大小数量
         const size_t NUM_SMALL = sizeof(SMALL_SIZES) / sizeof(SMALL_SIZES[0]);
         const size_t NUM_MEDIUM = sizeof(MEDIUM_SIZES) / sizeof(MEDIUM_SIZES[0]);
         const size_t NUM_LARGE = sizeof(LARGE_SIZES) / sizeof(LARGE_SIZES[0]);
         
         std::cout << "\nTesting mixed size allocations (" << NUM_ALLOCS 
                   << " allocations with fixed sizes):" << std::endl;
-
-
-        //测试 内存池
+        
+        // 测试内存池
         {
             Timer t;
-            std::array<std::vector<std::pair<void*,size_t>>,NUM_SMALL + NUM_MEDIUM + NUM_LARGE> sizePtrs;
-            for(auto& ptrs : sizePtrs)
-            {
+            // 按大小分类存储内存块
+            std::array<std::vector<std::pair<void*, size_t>>, NUM_SMALL + NUM_MEDIUM + NUM_LARGE> sizePtrs;
+            for (auto& ptrs : sizePtrs) {
                 ptrs.reserve(NUM_ALLOCS / (NUM_SMALL + NUM_MEDIUM + NUM_LARGE));
             }
-            //10万次分配
-            for(size_t i =0 ; i<NUM_ALLOCS;i++)
+            
+            for (size_t i = 0; i < NUM_ALLOCS; ++i) 
             {
                 size_t size;
-                //用循环模拟概率 
-                int category = i%100;
-
-                if(category<60)
-                {
-                    //小对象
-                    size_t index =(i/60)%NUM_SMALL;
+                int category = i % 100;  // 使用循环而不是随机数
+                
+                if (category < 60) {
+                    // 小对象：循环使用固定大小
+                    size_t index = (i / 60) % NUM_SMALL;
                     size = SMALL_SIZES[index];
-
-                }
-                else if(category <90)
-                {
-                    //中对象
-                    size_t index = (i/30)%NUM_MEDIUM;
-                    size =  MEDIUM_SIZES[index];
-                }
-                else
-                {
-                    //大对象
-                    size_t index = (i/10)%NUM_LARGE;
+                } else if (category < 90) {
+                    // 中等对象：循环使用固定大小
+                    size_t index = (i / 30) % NUM_MEDIUM;
+                    size = MEDIUM_SIZES[index];
+                } else {
+                    // 大对象：循环使用固定大小
+                    size_t index = (i / 10) % NUM_LARGE;
                     size = LARGE_SIZES[index];
                 }
-
-                // 内存池分配
+                
                 void* ptr = MemoryPool::allocate(size);
-                // 计算对应的数组索引
-                size_t ptrIndex = (category < 60) ? (i / 60) % NUM_SMALL :(category < 90) ? NUM_SMALL + (i / 30) % NUM_MEDIUM :NUM_SMALL + NUM_MEDIUM + (i / 10) % NUM_LARGE;
-                sizePtrs[ptrIndex].push_back({ptr,size});
-
-                // 每50次分配，批量释放
-                if(i%50==0)
+                // 计算在sizePtrs中的索引
+                size_t ptrIndex = (category < 60) ? (i / 60) % NUM_SMALL :
+                                (category < 90) ? NUM_SMALL + (i / 30) % NUM_MEDIUM :
+                                NUM_SMALL + NUM_MEDIUM + (i / 10) % NUM_LARGE;
+                sizePtrs[ptrIndex].push_back({ptr, size});
+                
+                // 模拟真实场景：随机释放一些内存
+                if (i % 50 == 0) 
                 {
-                    size_t  releaseIndex = rand()  % sizePtrs.size();
+                    // 随机选择一个大小类别进行批量释放
+                    size_t releaseIndex = rand() % sizePtrs.size();
                     auto& ptrs = sizePtrs[releaseIndex];
-
-                    if(!ptrs.empty())
+                    
+                    if (!ptrs.empty()) 
                     {
-                        size_t releaseCount = ptrs.size() * (20 + (rand()%11))/100;
-                        releaseCount = std::min(releaseCount,ptrs.size());
-
-                        for(size_t j=0; j<releaseCount;j++)
+                        // 释放该大小类别中20%-30%的内存块
+                        size_t releaseCount = ptrs.size() * (20 + (rand() % 11)) / 100;
+                        releaseCount = std::min(releaseCount, ptrs.size());
+                        
+                        for (size_t j = 0; j < releaseCount; ++j) 
                         {
-                            size_t index = rand()%ptrs.size();
-                            MemoryPool::deallocate(ptrs[index].first,ptrs[index].second);
+                            size_t index = rand() % ptrs.size();
+                            MemoryPool::deallocate(ptrs[index].first, ptrs[index].second);
                             ptrs[index] = ptrs.back();
                             ptrs.pop_back();
                         }
                     }
                 }
             }
-            for(auto& ptrs :sizePtrs)
+            
+            // 清理所有剩余内存
+            for (auto& ptrs : sizePtrs) 
             {
-                for(const auto& [ptr,size]:ptrs)
+                for (const auto& [ptr, size] : ptrs) 
+                {
+                    MemoryPool::deallocate(ptr, size);
+                }
+            }
+            
+            std::cout << "Memory Pool: " << std::fixed << std::setprecision(3) 
+                      << t.elapsed() << " ms" << std::endl;
+        }
+        
+        // 测试new/delete
+        {
+            Timer t;
+            std::array<std::vector<std::pair<void*, size_t>>, NUM_SMALL + NUM_MEDIUM + NUM_LARGE> sizePtrs;
+            for (auto& ptrs : sizePtrs) {
+                ptrs.reserve(NUM_ALLOCS / (NUM_SMALL + NUM_MEDIUM + NUM_LARGE));
+            }
+            
+            for (size_t i = 0; i < NUM_ALLOCS; ++i) 
+            {
+                size_t size;
+                int category = i % 100;
+                
+                if (category < 60) {
+                    size_t index = (i / 60) % NUM_SMALL;
+                    size = SMALL_SIZES[index];
+                } else if (category < 90) {
+                    size_t index = (i / 30) % NUM_MEDIUM;
+                    size = MEDIUM_SIZES[index];
+                } else {
+                    size_t index = (i / 10) % NUM_LARGE;
+                    size = LARGE_SIZES[index];
+                }
+                
+                void* ptr = new char[size];
+                size_t ptrIndex = (category < 60) ? (i / 60) % NUM_SMALL :
+                                (category < 90) ? NUM_SMALL + (i / 30) % NUM_MEDIUM :
+                                NUM_SMALL + NUM_MEDIUM + (i / 10) % NUM_LARGE;
+                sizePtrs[ptrIndex].push_back({ptr, size});
+                
+                if (i % 50 == 0) 
+                {
+                    size_t releaseIndex = rand() % sizePtrs.size();
+                    auto& ptrs = sizePtrs[releaseIndex];
+                    
+                    if (!ptrs.empty()) 
+                    {
+                        size_t releaseCount = ptrs.size() * (20 + (rand() % 11)) / 100;
+                        releaseCount = std::min(releaseCount, ptrs.size());
+                        
+                        for (size_t j = 0; j < releaseCount; ++j) 
+                        {
+                            size_t index = rand() % ptrs.size();
+                            delete[] static_cast<char*>(ptrs[index].first);
+                            ptrs[index] = ptrs.back();
+                            ptrs.pop_back();
+                        }
+                    }
+                }
+            }
+            
+            for (auto& ptrs : sizePtrs) 
+            {
+                for (const auto& [ptr, size] : ptrs) 
                 {
                     delete[] static_cast<char*>(ptr);
                 }
             }
-            std::cout << "New/Delete: " << std::fixed << std::setprecision(3) << t.elapsed() << " ms" << std::endl;
+            
+            std::cout << "New/Delete: " << std::fixed << std::setprecision(3) 
+                      << t.elapsed() << " ms" << std::endl;
         }
     }
-
 };
 
-int main()
+int main() 
 {
     std::cout << "Starting performance tests..." << std::endl;
-        // 调用预热函数
+    
+    // 预热系统
     PerformanceTest::warmup();
     
-    // 依次运行3个核心测试
+    // 运行测试
     PerformanceTest::testSmallAllocation();
     PerformanceTest::testMultiThreaded();
     PerformanceTest::testMixedSizes();
     
-    // 程序正常结束
     return 0;
 }
